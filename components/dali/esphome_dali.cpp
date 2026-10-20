@@ -2,10 +2,8 @@
 #include <esp_task_wdt.h>
 #include "esphome_dali.h"
 #include "esphome_dali_light.h"
+#include "esp_idf_dali_api.h"
 #include "port.h"
-
-//static const char *const TAG = "dali";
-static const bool DEBUG_LOG_RXTX = false; // NOTE: Will probably trigger WDT
 
 using namespace esphome;
 using namespace dali;
@@ -30,8 +28,18 @@ public:
 }  // namespace
 
 void DaliBusComponent::setup() {
-    m_txPin->pin_mode(gpio::Flags::FLAG_OUTPUT);
-    m_rxPin->pin_mode(gpio::Flags::FLAG_INPUT);
+    m_txPin->setup();
+    m_rxPin->setup();
+    const auto err = dali_init_with_inversion(
+        static_cast<gpio_num_t>(m_rxPin->get_pin()),
+        static_cast<gpio_num_t>(m_txPin->get_pin()),
+        m_invertTx,
+        m_invertRx);
+    if (err != ESP_OK) {
+        DALI_LOGE("Failed to initialize DALI RMT interface: %s", esp_err_to_name(err));
+        this->mark_failed();
+        return;
+    }
     DALI_LOGI("DALI bus ready");
 
     if (m_discovery) {
@@ -64,7 +72,7 @@ void DaliBusComponent::setup() {
             dali.bus_manager.terminate();
 
             // Seem to need a delay to allow time for devices to randomize...
-            delay(50);
+            delayMilliseconds(50);
         }
 
         DALI_LOGI("Begin device discovery...");
@@ -82,7 +90,7 @@ void DaliBusComponent::setup() {
         uint32_t long_addr = 0;
         while (dali.bus_manager.findNextAddress(short_addr, long_addr)) {
             count++;
-            delay(1); // yield to ESP stack
+            delayMilliseconds(1); // yield to ESP stack
             esp_task_wdt_reset();
 
             if (short_addr <= ADDR_SHORT_MAX) {
@@ -229,95 +237,69 @@ void DaliBusComponent::dump_config() {
     }
 }
 
-#define QUARTER_BIT_PERIOD 208
-#define HALF_BIT_PERIOD 416
-#define BIT_PERIOD 833
-
-void DaliBusComponent::writeBit(bool bit) {
-    // Output is inverted: HIGH pulls the bus to 0V.
-    m_txPin->digital_write(bit ? HIGH : LOW);
-    delayMicroseconds(HALF_BIT_PERIOD - 6);
-    m_txPin->digital_write(bit ? LOW : HIGH);
-    delayMicroseconds(HALF_BIT_PERIOD - 6);
-}
-
-void DaliBusComponent::writeByte(uint8_t b) {
-    for (int i = 0; i < 8; i++) {
-        writeBit(b & 0x80);
-        b <<= 1;
-    }
-}
-
-uint8_t DaliBusComponent::readByte() {
-    uint8_t byte = 0;
-    for (int i = 0; i < 8; i++) {
-        byte <<= 1;
-        byte |= m_rxPin->digital_read();
-        delayMicroseconds(BIT_PERIOD); // 1/1200 seconds
-    }
-    return byte;
-}
-
 void DaliBusComponent::resetBus() {
-    DALI_LOGD("Resetting bus");
-    m_txPin->digital_write(HIGH);
-    delay(1000);
-    m_txPin->digital_write(LOW);
+    DALI_LOGW("DALI reset pulse is not available with the RMT transport");
 }
 
 void DaliBusComponent::sendForwardFrame(uint8_t address, uint8_t data) {
-    if (DEBUG_LOG_RXTX) {
-        DALI_LOGD("TX: %02x %02x", address, data);
-        delayMicroseconds(BIT_PERIOD*8);
-        //Serial.print("TX: "); Serial.print(address, HEX); Serial.print(" "); Serial.println(data, HEX);
-    }
-
-    {
-        // This is timing critical
-        InterruptLock lock;
-
-        writeBit(1); // START bit
-        writeByte(address);
-        writeByte(data);
-        m_txPin->digital_write(LOW);
-    }
-
-    // Non critical delay
-    delayMicroseconds(HALF_BIT_PERIOD*2);
-    delayMicroseconds(BIT_PERIOD*4); // Optional, for clarity in scope trace
+    this->runTransaction(address, data, false, 0);
 }
 
 uint8_t DaliBusComponent::receiveBackwardFrame(unsigned long timeout_ms) {
-    uint8_t data;
+    (void) timeout_ms;
+    DALI_LOGE("Backward frames must be received as part of a DALI transaction");
+    return 0;
+}
 
-    unsigned long startTime = millis();
+uint8_t DaliBusComponent::transactForwardFrame(uint8_t address, uint8_t data, unsigned long timeout_ms) {
+    return this->runTransaction(address, data, true, timeout_ms);
+}
 
-    // Wait for START bit (timing critical)
-    // TODO: Need a better way to wait for this that doesn't block the CPU
-    while (m_rxPin->digital_read() == LOW) {
-        if (millis() - startTime >= timeout_ms) {
-            if (DEBUG_LOG_RXTX) {
-                DALI_LOGD("RX: 00 (NACK)");
-            }
-            return 0;
-        }
+uint8_t DaliBusComponent::runTransaction(uint8_t address, uint8_t data, bool expect_response, unsigned long timeout_ms) {
+    (void) timeout_ms;
+    DALI_LOGD("TX: %02X %02X", address, data);
+
+    dali_addressType_t address_type;
+    uint8_t dali_address;
+    bool is_command = (address & 1) != 0;
+
+    if (address == 0xFE || address == 0xFF) {
+        address_type = DALI_ADDRESS_TYPE_BROADCAST;
+        dali_address = 0;
+    } else if (address >= 0xA0) {
+        address_type = DALI_ADDRESS_TYPE_SPECIAL_CMD;
+        dali_address = address;
+    } else if ((address & 0x80) != 0) {
+        address_type = DALI_ADDRESS_TYPE_GROUP;
+        dali_address = (address >> 1) & 0x0F;
+    } else {
+        address_type = DALI_ADDRESS_TYPE_SHORT;
+        dali_address = address >> 1;
     }
 
-    {
-        // This is timing critical
-        InterruptLock lock;
-
-        delayMicroseconds(BIT_PERIOD); // Wait for first data bit
-        delayMicroseconds(QUARTER_BIT_PERIOD); // Wait a quater bit period to sample middle of first half bit
-        data = readByte();
-        delayMicroseconds(BIT_PERIOD*2); // Wait for STOP bits
+    int result = DALI_RESULT_NO_REPLY;
+    const auto err = dali_transaction(
+        address_type,
+        dali_address,
+        is_command,
+        data,
+        false,
+        DALI_TX_TIMEOUT_DEFAULT_MS,
+        expect_response ? &result : nullptr);
+    if (err != ESP_OK) {
+        DALI_LOGE("DALI RMT transaction failed: %s", esp_err_to_name(err));
+        return 0;
     }
 
-    if (DEBUG_LOG_RXTX) {
-        DALI_LOGD("RX: %02x", data);
+    if (!expect_response) {
+        DALI_LOGD("RX: -- (not requested)");
+        return 0;
+    }
+    if (result == DALI_RESULT_NO_REPLY) {
+        DALI_LOGD("RX: -- (no reply)");
+        return 0;
     }
 
-    // Minimum time before we can send another forward frame
-    delayMicroseconds(BIT_PERIOD*8); 
-    return data;
+    DALI_LOGD("RX: %02X", result);
+    return static_cast<uint8_t>(result);
 }
