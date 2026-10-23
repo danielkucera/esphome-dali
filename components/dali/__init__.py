@@ -10,7 +10,7 @@ import esphome.config_validation as cv
 
 AUTO_LOAD = ["light", "output"]
 
-DALI_LIB_REPOSITORY = "https://github.com/danielkucera/esp-idf-dali.git#esp-idf-5.5-support"
+DALI_LIB_REPOSITORY = "https://github.com/ferdinandkeil/esp-idf-dali.git#master"
 
 CONF_DALI_BUS = 'dali_bus'
 CONF_INITIALIZE_ADDRESSES = 'initialize_addresses'
