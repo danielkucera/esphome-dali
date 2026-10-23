@@ -192,7 +192,12 @@ void DaliBusComponent::create_light_component(short_addr_t short_addr, uint32_t 
     App.register_light(light_state);
     static_cast<AppRegistrationAccessor&>(App).register_component_(light_state);
 
-    light_state->set_restore_mode(light::LIGHT_RESTORE_DEFAULT_ON);
+    // Equivalent of the former LIGHT_RESTORE_DEFAULT_ON: on by default, restored state otherwise.
+    light_state->set_state_callback([](light::LightStateRTCState& state, bool restored) {
+        if (!restored) {
+            state.state = true;
+        }
+    });
     light_state->add_effects({});
 
     // Initialize the DaliLight with the LightState:

@@ -62,7 +62,7 @@ class DaliLight : public light::LightOutput, public Component {
 
     // Static trampoline for set_initial_state() callback (ESPHome 2026.4+).
     // Uses s_setup_instance file-static pointer set just before the call.
-    static void initial_state_trampoline(light::LightStateRTCState &s);
+    static void initial_state_trampoline(light::LightStateRTCState &s, bool restored);
 
  protected:
     DaliBusComponent *bus;

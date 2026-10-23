@@ -12,12 +12,15 @@ static const char *const TAG = "dali.light";
 
 #define DALI_MAX_BRIGHTNESS_F (254.0f)
 
-// File-static instance pointer for the set_initial_state trampoline.
+// File-static instance pointer for the state callback trampoline.
 // Safe because ESPHome setup is single-threaded: each LightState::setup()
 // calls setup_state() then invokes the callback in the same frame.
 static DaliLight* s_setup_instance = nullptr;
 
-void DaliLight::initial_state_trampoline(LightStateRTCState &s) {
+void DaliLight::initial_state_trampoline(LightStateRTCState &s, bool restored) {
+    if (!restored) {
+        s.state = true;  // default on, as with the former LIGHT_RESTORE_DEFAULT_ON
+    }
     if (s_setup_instance) {
         if (s_setup_instance->initial_has_brightness_) {
             s.brightness = s_setup_instance->initial_brightness_;
@@ -113,7 +116,7 @@ void dali::DaliLight::setup_state(light::LightState *state) {
             }
 
             s_setup_instance = this;
-            state->set_initial_state(initial_state_trampoline);
+            state->set_state_callback(initial_state_trampoline);
         }
         else {
             ESP_LOGW(TAG, "DALI device at addr %.2x not found!", address_);
