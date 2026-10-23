@@ -89,6 +89,8 @@ class DaliLight : public light::LightOutput, public Component {
     float initial_color_temp_{1.0f};
     bool initial_has_brightness_{false};
     bool initial_has_color_temp_{false};
+    bool initial_on_{false};
+    bool initial_has_state_{false};
     
 };
 

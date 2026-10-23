@@ -18,10 +18,21 @@ static const char *const TAG = "dali.light";
 static DaliLight* s_setup_instance = nullptr;
 
 void DaliLight::initial_state_trampoline(LightStateRTCState &s, bool restored) {
-    if (!restored) {
-        s.state = true;  // default on, as with the former LIGHT_RESTORE_DEFAULT_ON
+    if (s_setup_instance && s_setup_instance->initial_has_state_) {
+        // The device's actual level is the source of truth for on/off
+        s.state = s_setup_instance->initial_on_;
+    } else if (!restored) {
+        s.state = false;  // state could not be read from the device: default off
     }
     if (s_setup_instance) {
+        if (!restored) {
+            // Without a saved state the color mode is UNKNOWN, and ESPHome would then drop the brightness below.
+            // Pick the first supported mode so the restored brightness is applied.
+            for (auto mode : s_setup_instance->get_traits().get_supported_color_modes()) {
+                s.color_mode = mode;
+                break;
+            }
+        }
         if (s_setup_instance->initial_has_brightness_) {
             s.brightness = s_setup_instance->initial_brightness_;
         }
@@ -97,9 +108,13 @@ void dali::DaliLight::setup_state(light::LightState *state) {
             // Query the actual brightness level of the device and 
             // ensure this is reflected in the ESPHome component itself...
             uint8_t current_level = bus->dali.lamp.getCurrentLevel(address_);
+            initial_on_ = current_level != 0;
+            initial_has_state_ = true;
+            ESP_LOGD(TAG, "Restore state: %s", initial_on_ ? "ON" : "OFF");
             if (current_level != 0) {
                 // TODO: Do we need to take into account reported min/max brightness?
-                initial_brightness_ = (current_level * (1.0f/255.0f));
+                // write_state() receives gamma-corrected brightness, so undo that to get the same level back
+                initial_brightness_ = state->gamma_uncorrect_lut(current_level * (1.0f/255.0f));
                 initial_has_brightness_ = true;
                 ESP_LOGD(TAG, "Restore brightness level: %.2f", initial_brightness_);
             }
