@@ -1,5 +1,6 @@
 #include <esphome.h>
 #include <esp_task_wdt.h>
+#include <driver/gpio.h>
 #include "esphome_dali.h"
 #include "esphome_dali_light.h"
 #include "esp_idf_dali_api.h"
@@ -41,6 +42,14 @@ void DaliBusComponent::setup() {
         return;
     }
     DALI_LOGI("DALI bus ready");
+
+    // ESP-IDF's rmt_new_rx_channel() unconditionally enables the internal pull-up on the RX pin.
+    // https://github.com/espressif/esp-idf/blob/v5.5.6/components/esp_driver_rmt/src/rmt_rx.c#L295
+    // The DALI interface board has its own divider on RX, and the pull-up lifts the low level to ~1V,
+    // so disable it again.
+    // Consider your board's RX pin voltage divider when deciding on pull-up configuration.
+    // ToDo: does this need to be configurable based on the board's RX pin circuitry?
+    gpio_set_pull_mode(static_cast<gpio_num_t>(m_rxPin->get_pin()), GPIO_FLOATING);
 
     if (m_discovery) {
         // Optional: reset devices on the bus so we are in a known-good state.
