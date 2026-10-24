@@ -201,11 +201,6 @@ void DaliBusComponent::create_light_component(short_addr_t short_addr, uint32_t 
     App.register_light(light_state);
     static_cast<AppRegistrationAccessor&>(App).register_component_(light_state);
 
-    // Default off unless the device state can be read (setup_state() overrides this callback then).
-    light_state->set_state_callback([](light::LightStateRTCState& state, bool restored) {
-        (void) state;
-        (void) restored;
-    });
     light_state->add_effects({});
 
     // Initialize the DaliLight with the LightState:

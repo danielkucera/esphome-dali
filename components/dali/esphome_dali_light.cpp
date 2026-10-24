@@ -131,7 +131,7 @@ void dali::DaliLight::setup_state(light::LightState *state) {
             }
 
             s_setup_instance = this;
-            state->set_state_callback(initial_state_trampoline);
+            compat::set_state_callback(state, initial_state_trampoline);
         }
         else {
             ESP_LOGW(TAG, "DALI device at addr %.2x not found!", address_);
