@@ -28,7 +28,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_INVERT_TX, default=False): cv.boolean,
     cv.Optional(CONF_INVERT_RX, default=True): cv.boolean,
     cv.Optional(CONF_DISCOVERY): cv.All(cv.requires_component("light"), cv.boolean),
-    cv.Optional(CONF_INITIALIZE_ADDRESSES): cv.boolean,
+    cv.Optional(CONF_INITIALIZE_ADDRESSES): cv.Any(cv.boolean, cv.one_of('all', 'unassigned', lower=True)),
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config: OrderedDict):
@@ -56,7 +56,13 @@ async def to_code(config: OrderedDict):
         #
         # This can be done by registering this bus component as a light,
         # making the core think there is at least one light defined.
-        CORE.register_platform_component("light", bus)
+        # The light list has a fixed capacity based on this count, and discovery
+        # can create up to one light per short address (64).
+        for _ in range(64):
+            CORE.register_platform_component("light", bus)
 
-    if config.get(CONF_INITIALIZE_ADDRESSES, False):
+    init = config.get(CONF_INITIALIZE_ADDRESSES, False)
+    if init == 'all':
+        cg.add(var.do_initialize_addresses(cg.RawExpression('dali::DaliInitMode::InitializeAll')))
+    elif init:
         cg.add(var.do_initialize_addresses())

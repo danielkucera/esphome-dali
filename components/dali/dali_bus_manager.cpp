@@ -110,9 +110,7 @@ bool DaliBusManager::findNextAddress(short_addr_t& out_short_addr, uint32_t& out
         }
     }
 
-    if (addr == 0xFFFFFF || addr == 0x000000) {
-        return false; // No more devices found
-    }
+    // 0x000000 and 0xFFFFFF are valid random addresses; the compare checks below confirm a device is present.
 
     // Final step in the search, set last bit if no longer matching
     if (!compareSearchAddress(addr)) {

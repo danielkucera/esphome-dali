@@ -96,9 +96,8 @@ class DaliLight : public light::LightOutput, public Component {
     // NOTE: Must have a lower priority number than the DALI bus component
     float get_setup_priority() const override { return setup_priority::DATA; }
 
-    // Static trampoline for set_initial_state() callback (ESPHome 2026.4+).
-    // Uses s_setup_instance file-static pointer set just before the call.
-    static void initial_state_trampoline(light::LightStateRTCState &s, bool restored);
+    // Applies the state read from the device to the initial light state (called from per-address trampolines).
+    static void apply_initial_state(DaliLight *self, light::LightStateRTCState &s, bool restored);
 
  protected:
     DaliBusComponent *bus;
@@ -127,6 +126,7 @@ class DaliLight : public light::LightOutput, public Component {
     bool initial_has_color_temp_{false};
     bool initial_on_{false};
     bool initial_has_state_{false};
+    bool setup_done_{false};
     
 };
 

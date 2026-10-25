@@ -238,6 +238,9 @@ public:
 public:
     virtual void resetBus() { }
 
+    /// @brief True if the last transaction saw any backward frame, even a corrupted one (e.g. collision)
+    virtual bool lastReplyReceived() const { return false; }
+
     /// @brief Send a query command to the DALI bus and return the response
     /// @param address Device address, group address, or broadcast
     /// @param command Command byte
@@ -377,10 +380,10 @@ DaliBusManager(DaliPort& port)
         port.sendSpecialCommand(DaliSpecialCommand::SEARCH_ADDRM, (search_address >> 8) & 0xFF);  // Set SEARCHM
         port.sendSpecialCommand(DaliSpecialCommand::SEARCH_ADDRL, search_address & 0xFF);         // Set SEARCHL
 
-        port.sendSpecialCommand(DaliSpecialCommand::COMPARE, 0);
-
         const unsigned long timeout_ms = 10;
-        return (port.sendSpecialQueryCommand(DaliSpecialCommand::COMPARE, 0, timeout_ms) == 0xFF);
+        // Several devices answering at once corrupt the frame, so any reply counts as "yes".
+        const uint8_t reply = port.sendSpecialQueryCommand(DaliSpecialCommand::COMPARE, 0, timeout_ms);
+        return reply != 0 || port.lastReplyReceived();
     }
 
     /// @brief Exit the initialization mode.

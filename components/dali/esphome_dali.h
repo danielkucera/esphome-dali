@@ -54,12 +54,16 @@ public:
 
 public: // DaliPort
     void resetBus() override;
+    bool lastReplyReceived() const override { return m_lastReplyReceived; }
     void sendForwardFrame(uint8_t address, uint8_t data) override;
     uint8_t receiveBackwardFrame(unsigned long timeout_ms = 100) override;
     uint8_t transactForwardFrame(uint8_t address, uint8_t data, unsigned long timeout_ms = 100) override;
 
 private:
+    bool m_lastReplyReceived = false;
     uint8_t runTransaction(uint8_t address, uint8_t data, bool expect_response, unsigned long timeout_ms);
+    static short_addr_t find_free_address(const bool* is_used);
+    void register_discovered(short_addr_t short_addr, uint32_t long_addr);
     void create_light_component(short_addr_t short_addr, uint32_t long_addr);
 
     InternalGPIOPin* m_rxPin;
